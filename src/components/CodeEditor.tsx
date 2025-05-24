@@ -48,8 +48,9 @@ function CodeEditor() {
       } else {
         toast.error("Some test cases failed. Check the results below.");
       }
-    } catch (error) {
-      toast.error("Error executing code: " + error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+      toast.error("Error executing code: " + errorMessage);
     } finally {
       setIsRunning(false);
     }
@@ -165,21 +166,16 @@ function CodeEditor() {
               </Card>
 
               {/* CONSTRAINTS */}
-              <Card>
-                <CardHeader className="flex flex-row items-center gap-2">
-                  <AlertCircleIcon className="h-5 w-5 text-blue-500" />
-                  <CardTitle>Constraints</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="list-disc list-inside space-y-1.5 text-sm marker:text-muted-foreground">
+              {selectedQuestion.constraints && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-medium mb-2">Constraints:</h3>
+                  <ul className="list-disc list-inside text-sm text-muted-foreground">
                     {selectedQuestion.constraints.map((constraint, index) => (
-                      <li key={index} className="text-muted-foreground">
-                        {constraint}
-                      </li>
+                      <li key={index}>{constraint}</li>
                     ))}
                   </ul>
-                </CardContent>
-              </Card>
+                </div>
+              )}
 
               {/* RESULTS */}
               {results && (

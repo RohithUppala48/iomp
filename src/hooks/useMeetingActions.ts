@@ -22,8 +22,8 @@ const useMeetingActions = () => {
         },
       });
 
-      router.push(`/meeting/${call.id}`);
       toast.success("Meeting Created");
+      return call.id;
     } catch (error) {
       console.error(error);
       toast.error("Failed to create meeting");

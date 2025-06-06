@@ -10,6 +10,8 @@ import {
 import { LayoutListIcon, LoaderIcon, UsersIcon, MessageSquareIcon, TimerIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useQuery } from "convex/react"; // Added
+import { api } from "../../convex/_generated/api"; // Added
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable";
 import {
   DropdownMenu,
@@ -30,8 +32,14 @@ function MeetingRoom() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const { useCallCallingState } = useCallStateHooks();
   const call = useCall();
-
   const callingState = useCallCallingState();
+
+  // Fetch interview details
+  const interviewId = call?.id; // streamCallId is the interviewId for the query
+  const interview = useQuery(
+    api.interviews.getInterviewByStreamCallId,
+    interviewId ? { streamCallId: interviewId } : "skip"
+  );
 
   // Timer effect
   useEffect(() => {
@@ -151,7 +159,25 @@ function MeetingRoom() {
         <ResizableHandle withHandle />
 
         <ResizablePanel defaultSize={65} minSize={25}>
-          <CodeEditor />
+          {interview === undefined && (
+            <div className="flex items-center justify-center h-full">
+              <LoaderIcon className="size-6 animate-spin" />
+              <p className="ml-2">Loading code editor...</p>
+            </div>
+          )}
+          {interview === null && (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-red-500">Error: Could not load interview details for the code editor.</p>
+            </div>
+          )}
+          {interview && (
+            <CodeEditor
+              interview={interview}
+              // Pass initialCode and initialLanguage if they exist, otherwise CodeEditor defaults will be used
+              // initialCode={interview.currentCode || undefined}
+              // initialLanguage={interview.currentLanguage || undefined}
+            />
+          )}
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

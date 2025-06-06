@@ -12,6 +12,23 @@ export const getAllInterviews = query({
   },
 });
 
+export const updateInterviewQuestion = mutation({
+  args: {
+    interviewId: v.id("interviews"),
+    questionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    // TODO: Add more granular authorization if needed (e.g., only interviewer can change question)
+
+    return await ctx.db.patch(args.interviewId, {
+      selectedQuestionId: args.questionId,
+    });
+  },
+});
+
 export const getMyInterviews = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -26,9 +43,22 @@ export const getMyInterviews = query({
   },
 });
 
+export const getInterviewById = query({
+  args: { interviewId: v.id("interviews") },
+  handler: async (ctx, args) => {
+    // TODO: Add authorization if needed to restrict who can fetch by ID.
+    // const identity = await ctx.auth.getUserIdentity();
+    // if (!identity) throw new Error("Unauthorized");
+    return await ctx.db.get(args.interviewId);
+  },
+});
+
 export const getInterviewByStreamCallId = query({
   args: { streamCallId: v.string() },
   handler: async (ctx, args) => {
+    // TODO: Add authorization if needed
+    // const identity = await ctx.auth.getUserIdentity();
+    // if (!identity) throw new Error("Unauthorized");
     return await ctx.db
       .query("interviews")
       .withIndex("by_stream_call_id", (q) => q.eq("streamCallId", args.streamCallId))
@@ -52,6 +82,47 @@ export const createInterview = mutation({
 
     return await ctx.db.insert("interviews", {
       ...args,
+    });
+  },
+});
+
+export const updateInterviewCode = mutation({
+  args: {
+    interviewId: v.id("interviews"),
+    code: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    // TODO: Add more granular authorization if needed
+    // For now, any authenticated user can update.
+    // const interview = await ctx.db.get(args.interviewId);
+    // if (!interview) throw new Error("Interview not found");
+    // if (interview.candidateId !== identity.subject && !interview.interviewerIds.includes(identity.subject)) {
+    //   throw new Error("User not authorized to update this interview");
+    // }
+
+    return await ctx.db.patch(args.interviewId, {
+      currentCode: args.code,
+    });
+  },
+});
+
+export const updateInterviewLanguage = mutation({
+  args: {
+    interviewId: v.id("interviews"),
+    language: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    // TODO: Add more granular authorization if needed
+    // For now, any authenticated user can update.
+
+    return await ctx.db.patch(args.interviewId, {
+      currentLanguage: args.language,
     });
   },
 });

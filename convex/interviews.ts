@@ -21,7 +21,12 @@ export const updateInterviewQuestion = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthorized");
 
-    // TODO: Add more granular authorization if needed (e.g., only interviewer can change question)
+    const interview = await ctx.db.get(args.interviewId);
+    if (!interview) throw new Error("Interview not found");
+
+    if (identity.subject !== interview.candidateId) {
+      throw new Error("User is not authorized to make changes to this interview's question.");
+    }
 
     return await ctx.db.patch(args.interviewId, {
       selectedQuestionId: args.questionId,
@@ -95,13 +100,12 @@ export const updateInterviewCode = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthorized");
 
-    // TODO: Add more granular authorization if needed
-    // For now, any authenticated user can update.
-    // const interview = await ctx.db.get(args.interviewId);
-    // if (!interview) throw new Error("Interview not found");
-    // if (interview.candidateId !== identity.subject && !interview.interviewerIds.includes(identity.subject)) {
-    //   throw new Error("User not authorized to update this interview");
-    // }
+    const interview = await ctx.db.get(args.interviewId);
+    if (!interview) throw new Error("Interview not found");
+
+    if (identity.subject !== interview.candidateId) {
+      throw new Error("User is not authorized to make changes to this interview's code.");
+    }
 
     return await ctx.db.patch(args.interviewId, {
       currentCode: args.code,
@@ -118,8 +122,12 @@ export const updateInterviewLanguage = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthorized");
 
-    // TODO: Add more granular authorization if needed
-    // For now, any authenticated user can update.
+    const interview = await ctx.db.get(args.interviewId);
+    if (!interview) throw new Error("Interview not found");
+
+    if (identity.subject !== interview.candidateId) {
+      throw new Error("User is not authorized to make changes to this interview's language.");
+    }
 
     return await ctx.db.patch(args.interviewId, {
       currentLanguage: args.language,

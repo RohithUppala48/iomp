@@ -11,10 +11,12 @@ import { AlertCircleIcon, BookIcon, LightbulbIcon, PlayIcon } from "lucide-react
 import Editor from "@monaco-editor/react";
 import { Button } from "./ui/button";
 import { useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
+// api is already imported via useMutation, no need for duplicate
 import { Loader2Icon, CheckCircle2Icon, XCircleIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { editor } from "monaco-editor"; // Added for editor instance type
+import { useUser } from "@clerk/nextjs"; // Added for user context
+
 // import debounce from "lodash.debounce"; // Removed due to install issues
 
 interface CodeEditorProps {
@@ -22,6 +24,9 @@ interface CodeEditorProps {
 }
 
 function CodeEditor({ interview }: CodeEditorProps) {
+  const { user } = useUser(); // Get current user
+  const isCandidate = user?.id === interview?.candidateId;
+
   // Initialize selectedQuestion based on interview.selectedQuestionId or default
   const [selectedQuestion, setSelectedQuestion] = useState(() => {
     const questionId = interview?.selectedQuestionId;
@@ -78,37 +83,70 @@ function CodeEditor({ interview }: CodeEditorProps) {
 
   // Effect to update local language when interview.currentLanguage changes from remote
   useEffect(() => {
+    // console.log("Remote language effect: interview.currentLanguage =", interview?.currentLanguage, "local language =", language);
     if (interview?.currentLanguage && interview.currentLanguage !== language) {
-      setLanguage(interview.currentLanguage as "javascript" | "python" | "java");
+      // console.log("Updating local language from remote:", interview.currentLanguage);
+      const newLanguage = interview.currentLanguage as "javascript" | "python" | "java";
+      const oldStarterCode = selectedQuestion.starterCode[language]; // Use language before it's updated
+
+      setLanguage(newLanguage);
+
+      // If current code was the starter code for the OLD language, update code to new language's starter code
+      // Or if there was no currentCode from interview (implying it's a fresh state for this question)
+      if (code === oldStarterCode || !interview.currentCode) {
+        // console.log("Remote language change: Updating code to starter for new language", newLanguage);
+        setCode(selectedQuestion.starterCode[newLanguage]);
+        // NO updateInterviewCode here, this is reacting to a remote change.
+        // The user who initiated the language change would have pushed the new starter code.
+      }
     }
-  }, [interview?.currentLanguage]);
+  }, [interview?.currentLanguage, selectedQuestion, code, interview?.currentCode]); // Added dependencies
 
   // Effect to update local selectedQuestion and code when interview.selectedQuestionId changes from remote
   useEffect(() => {
     const remoteQuestionId = interview?.selectedQuestionId;
+    // console.log("Remote question effect: remoteQuestionId =", remoteQuestionId, "local selectedQuestion.id =", selectedQuestion.id);
     if (remoteQuestionId && remoteQuestionId !== selectedQuestion.id) {
       const newQuestion = CODING_QUESTIONS.find(q => q.id === remoteQuestionId);
       if (newQuestion) {
+        // console.log("Updating local question from remote:", newQuestion.id);
         const oldStarterCode = selectedQuestion.starterCode[language];
         setSelectedQuestion(newQuestion);
-        // Only change code if it was the starter code of the previous question,
-        // or if there was no currentCode from the interview (implying it's fresh)
+
+        // If current code was the starter code for the OLD question, update code to new question's starter code
+        // Or if there was no currentCode from interview
         if (code === oldStarterCode || !interview.currentCode) {
-          setCode(newQuestion.starterCode[language]);
+          const newStarterCode = newQuestion.starterCode[language];
+          // console.log("Remote question change: Updating code to starter for new question", newStarterCode);
+          setCode(newStarterCode);
+          // Persist this change because a remote question change implies a reset to that question's starter code
+          // unless the user had already started typing something else (interview.currentCode would exist).
+          // This call might be debated: if another user changes the question, should it wipe current user's code if they touched it?
+          // The condition `!interview.currentCode` tries to protect this.
+          // However, `handleQuestionChange` *always* sends starter code.
+          // For consistency, if remote Q changes, and code was old starter, new starter is sent.
+          if (interview?._id && (!interview.currentCode || code === oldStarterCode) ) {
+            updateInterviewCode({ interviewId: interview._id, code: newStarterCode }).catch(e => console.error("Failed to update code on remote Q change",e));
+          }
         }
       }
     } else if (!remoteQuestionId && selectedQuestion.id !== CODING_QUESTIONS[0].id) {
-      // If remoteQuestionId is cleared, reset to default, applying same logic for code.
+      // console.log("Remote question cleared, resetting to default");
       const defaultQuestion = CODING_QUESTIONS[0];
       const oldStarterCode = selectedQuestion.starterCode[language];
       setSelectedQuestion(defaultQuestion);
       if (code === oldStarterCode || !interview.currentCode) {
-        setCode(defaultQuestion.starterCode[language]);
+        const newStarterCode = defaultQuestion.starterCode[language];
+        setCode(newStarterCode);
+        if (interview?._id && (!interview.currentCode || code === oldStarterCode)) {
+            updateInterviewCode({ interviewId: interview._id, code: newStarterCode }).catch(e => console.error("Failed to update code on remote Q clear",e));
+        }
       }
     }
-  }, [interview?.selectedQuestionId, language]); // Added interview.currentCode to dependencies? No, that's for code sync.
+  }, [interview?.selectedQuestionId, language, interview?.currentCode]); // Refined dependencies
 
   // Initialize code based on selectedQuestion and interview.currentCode (after selectedQuestion is determined)
+  // This effect is crucial for setting the *initial* code correctly, especially considering persisted code.
   useEffect(() => {
     if (interview.currentCode) {
       // If there's currentCode in interview, it takes precedence,
@@ -147,20 +185,29 @@ function CodeEditor({ interview }: CodeEditorProps) {
   };
 
   const handleLanguageChange = async (newLanguage: "javascript" | "python" | "java") => {
+    if (newLanguage === language) return;
+
+    // console.log("Local language change: newLanguage =", newLanguage);
+    const newStarterCode = selectedQuestion.starterCode[newLanguage];
+
     setLanguage(newLanguage);
-    // Update code to starter code for new language, only if there's no current code from interview or user hasn't started typing
-     if (!interview.currentCode || code === selectedQuestion.starterCode[language]) {
-      setCode(selectedQuestion.starterCode[newLanguage]);
-    }
+    setCode(newStarterCode); // Always set code to new language's starter code on local change
     setResults(null);
+
     if (interview?._id) {
       try {
+        // console.log("Sending language update to Convex:", newLanguage);
         await updateInterviewLanguage({
           interviewId: interview._id,
           language: newLanguage,
         });
+        // console.log("Sending new starter code to Convex:", newStarterCode);
+        await updateInterviewCode({ // Also send the new starter code
+          interviewId: interview._id,
+          code: newStarterCode,
+        });
       } catch (error) {
-        console.error("Failed to update language:", error);
+        console.error("Failed to update language or code:", error);
         toast.error("Error saving language change.");
       }
     }
@@ -237,20 +284,28 @@ function CodeEditor({ interview }: CodeEditorProps) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select value={selectedQuestion.id} onValueChange={handleQuestionChange}>
+                  <Select
+                    value={selectedQuestion.id}
+                    onValueChange={handleQuestionChange}
+                    disabled={!isCandidate}
+                  >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select question" />
                     </SelectTrigger>
                     <SelectContent>
                       {CODING_QUESTIONS.map((q) => (
-                        <SelectItem key={q.id} value={q.id}>
+                        <SelectItem key={q.id} value={q.id} disabled={!isCandidate}>
                           {q.title}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
 
-                  <Select value={language} onValueChange={handleLanguageChange}>
+                  <Select
+                    value={language}
+                    onValueChange={handleLanguageChange}
+                    disabled={!isCandidate}
+                  >
                     <SelectTrigger className="w-[150px]">
                       <SelectValue>
                         <div className="flex items-center gap-2">
@@ -265,7 +320,7 @@ function CodeEditor({ interview }: CodeEditorProps) {
                     </SelectTrigger>
                     <SelectContent>
                       {LANGUAGES.map((lang) => (
-                        <SelectItem key={lang.id} value={lang.id}>
+                        <SelectItem key={lang.id} value={lang.id} disabled={!isCandidate}>
                           <div className="flex items-center gap-2">
                             <img
                               src={`/${lang.id}.png`}
@@ -413,8 +468,9 @@ function CodeEditor({ interview }: CodeEditorProps) {
             theme="vs-dark"
             value={code}
             onMount={(editor) => editorRef.current = editor} // Store editor instance
-            onChange={handleCodeChange}
+            onChange={handleCodeChange} // onChange will respect readOnly internally
             options={{
+              readOnly: !isCandidate, // Set readOnly option for Monaco editor
               minimap: { enabled: false },
               fontSize: 18,
               lineNumbers: "on",

@@ -1,5 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, action } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const getAllInterviews = query({
   handler: async (ctx) => {
@@ -159,15 +160,29 @@ export const submitCurrentCode = mutation({
       throw new Error("Interview not found");
     }
 
-    // Ensure the user is the candidate for this interview
-    if (identity.subject !== interview.candidateId) {
-      throw new Error("User is not authorized to submit code for this interview.");
-    }
+    // Execute the code before storing submission
+    const executionResults = await ctx.runAction(internal.codeExecution.executeCode, {
+      questionId: interview.selectedQuestionId || "",
+      language: interview.currentLanguage || "",
+      code: interview.currentCode || "",
+    });
+
+    const newSubmission = {
+      code: interview.currentCode || "",
+      language: interview.currentLanguage || "",
+      timestamp: Date.now(),
+      questionId: interview.selectedQuestionId || "",
+      executionResults,
+    };
+
+    // Get existing submissions or initialize empty array
+    const existingSubmissions = interview.submissions || [];
 
     return await ctx.db.patch(args.interviewId, {
       submittedCode: interview.currentCode,
       submittedLanguage: interview.currentLanguage,
       isCodeSubmitted: true,
+      submissions: [...existingSubmissions, newSubmission],
     });
   },
 });
@@ -175,14 +190,18 @@ export const submitCurrentCode = mutation({
 export const getAllSubmittedInterviews = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    // TODO: Add role-based authorization if only specific users (e.g., admins, interviewers)
-    // should be able to access all submissions.
     if (!identity) {
-      // Or, if public access to submissions is intended, remove this check.
-      // For now, let's assume only authenticated users can see this.
-      // Depending on product requirements, might need fine-grained roles.
-      // e.g. if (identity.role !== "admin" && identity.role !== "interviewer") throw new Error("Unauthorized");
       throw new Error("Unauthorized: Must be logged in to view submissions.");
+    }
+
+    // Get user details to check role
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("clerkId"), identity.subject))
+      .first();
+
+    if (!user || user.role !== "interviewer") {
+      throw new Error("Unauthorized: Only interviewers can view submissions.");
     }
 
     const interviewsQuery = ctx.db

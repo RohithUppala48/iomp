@@ -1,13 +1,18 @@
 import { useRouter } from "next/navigation";
 import { useStreamVideoClient } from "@stream-io/video-react-sdk";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useUser } from "@clerk/nextjs";
 import toast from "react-hot-toast";
 
 const useMeetingActions = () => {
   const router = useRouter();
   const client = useStreamVideoClient();
+  const createInterview = useMutation(api.interviews.createInterview);
+  const { user } = useUser();
 
   const createInstantMeeting = async () => {
-    if (!client) return;
+    if (!client || !user) return;
 
     try {
       const id = crypto.randomUUID();
@@ -20,6 +25,17 @@ const useMeetingActions = () => {
             description: "Instant Meeting",
           },
         },
+      });
+
+      // Create interview record in database
+      await createInterview({
+        title: "Instant Meeting",
+        description: "Instant coding interview session",
+        startTime: Date.now(),
+        status: "active",
+        streamCallId: id,
+        candidateId: user.id,
+        interviewerIds: [user.id],
       });
 
       toast.success("Meeting Created");

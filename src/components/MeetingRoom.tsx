@@ -38,10 +38,17 @@ function MeetingRoom() {
 
   // Fetch interview details
   const interviewId = call?.id; // streamCallId is the interviewId for the query
+  console.log("[MeetingRoom] streamCallId used for interview query:", interviewId);
   const interview = useQuery(
     api.interviews.getInterviewByStreamCallId,
     interviewId ? { streamCallId: interviewId } : "skip"
   );
+
+  useEffect(() => {
+    if (interviewId && !interview) {
+      console.error(`[MeetingRoom] No interview found for streamCallId: ${interviewId}`);
+    }
+  }, [interviewId, interview]);
 
   const isInterviewer = user?.id !== interview?.candidateId;
 
@@ -172,7 +179,7 @@ function MeetingRoom() {
               )}
               {interview === null && ( // Still show error if interview data failed to load
                 <div className="flex items-center justify-center h-full">
-                  <p className="text-red-500">Error: Could not load interview details for the code editor.</p>
+                  <p className="text-red-500">Error: Could not load interview details for the code editor. (streamCallId: {interviewId})</p>
                 </div>
               )}
               {interview && ( // Only render CodeEditor if interview data is available

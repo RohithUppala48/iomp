@@ -272,7 +272,11 @@ function CodeEditor({ interview }: CodeEditorProps) {
     }
     const toastId = toast.loading("Submitting your code...");
     try {
-      await submitCodeMutation({ interviewId: interview._id });
+      await submitCodeMutation({ 
+        interviewId: interview._id, 
+        questionId: selectedQuestion.id, 
+        code 
+      });
       toast.success("Code submitted successfully!", { id: toastId });
       // The UI should update based on interview.isCodeSubmitted via Convex subscription
     } catch (error) {
@@ -305,14 +309,13 @@ function CodeEditor({ interview }: CodeEditorProps) {
                   <Select
                     value={selectedQuestion.id}
                     onValueChange={handleQuestionChange}
-                    disabled={!isCandidate}
                   >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select question" />
                     </SelectTrigger>
                     <SelectContent>
                       {CODING_QUESTIONS.map((q) => (
-                        <SelectItem key={q.id} value={q.id} disabled={!isCandidate}>
+                        <SelectItem key={q.id} value={q.id}>
                           {q.title}
                         </SelectItem>
                       ))}
@@ -322,7 +325,6 @@ function CodeEditor({ interview }: CodeEditorProps) {
                   <Select
                     value={language}
                     onValueChange={handleLanguageChange}
-                    disabled={!isCandidate}
                   >
                     <SelectTrigger className="w-[150px]">
                       <SelectValue>
@@ -338,7 +340,7 @@ function CodeEditor({ interview }: CodeEditorProps) {
                     </SelectTrigger>
                     <SelectContent>
                       {LANGUAGES.map((lang) => (
-                        <SelectItem key={lang.id} value={lang.id} disabled={!isCandidate}>
+                        <SelectItem key={lang.id} value={lang.id}>
                           <div className="flex items-center gap-2">
                             <img
                               src={`/${lang.id}.png`}
@@ -463,7 +465,6 @@ function CodeEditor({ interview }: CodeEditorProps) {
           <div className="absolute top-4 right-4 z-10 flex gap-2">
             <Button
               onClick={handleRunCode}
-              disabled={isRunning || (interview.isCodeSubmitted && isCandidate)}
               className="gap-2"
             >
               {isRunning ? (
@@ -478,16 +479,13 @@ function CodeEditor({ interview }: CodeEditorProps) {
                 </>
               )}
             </Button>
-            {isCandidate && !interview.isCodeSubmitted && (
-              <Button
-                onClick={handleSubmitCode}
-                // disabled={isRunning} // Or any other condition if needed
-                className="gap-2 bg-green-600 hover:bg-green-700"
-              >
-                <CheckCircle2Icon className="h-4 w-4" />
-                Submit Code
-              </Button>
-            )}
+            <Button
+              onClick={handleSubmitCode}
+              className="gap-2 bg-green-600 hover:bg-green-700"
+            >
+              <CheckCircle2Icon className="h-4 w-4" />
+              Submit Code
+            </Button>
           </div>
           <Editor
             height={"100%"}
@@ -495,10 +493,9 @@ function CodeEditor({ interview }: CodeEditorProps) {
             language={language}
             theme="vs-dark"
             value={code}
-            onMount={(editor) => editorRef.current = editor} // Store editor instance
-            onChange={handleCodeChange} // onChange will respect readOnly internally
+            onMount={(editor) => editorRef.current = editor} 
+            onChange={handleCodeChange} 
             options={{
-              readOnly: !isCandidate || interview.isCodeSubmitted, // Updated readOnly logic
               minimap: { enabled: false },
               fontSize: 18,
               lineNumbers: "on",

@@ -25,6 +25,32 @@ export default defineSchema({
     submittedCode: v.optional(v.string()),
     submittedLanguage: v.optional(v.string()),
     isCodeSubmitted: v.optional(v.boolean()),
+    submissions: v.optional(v.array(v.object({
+      code: v.string(),
+      questionId: v.string(),
+      language: v.string(),
+      timestamp: v.number(),
+      executionResults: v.object({
+        allPassed: v.boolean(),
+        results: v.array(v.object({
+          input: v.string(),
+          expected: v.string(),
+          actual: v.optional(v.string()),
+          passed: v.boolean(),
+          error: v.optional(v.string()),
+        })),
+      }),
+    }))),
+    lastExecutionResults: v.optional(v.object({
+      allPassed: v.boolean(),
+      results: v.array(v.object({
+        input: v.string(),
+        expected: v.string(),
+        actual: v.optional(v.string()),
+        passed: v.boolean(),
+        error: v.optional(v.string()),
+      })),
+    })),
   })
     .index("by_candidate_id", ["candidateId"])
     .index("by_stream_call_id", ["streamCallId"]),

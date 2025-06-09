@@ -4,7 +4,6 @@ import { ReactNode, useEffect, useState } from "react";
 import { StreamVideoClient, StreamVideo } from "@stream-io/video-react-sdk";
 import { useUser } from "@clerk/nextjs";
 import LoaderUI from "../LoaderUI";
-import { streamTokenProvider } from "@/actions/stream.actions";
 
 const StreamVideoProvider = ({ children }: { children: ReactNode }) => {
   const [streamVideoClient, setStreamVideoClient] = useState<StreamVideoClient>();
@@ -13,14 +12,21 @@ const StreamVideoProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!isLoaded || !user) return;
 
+    const tokenProvider = async () => {
+      const res = await fetch("/api/stream-token");
+      if (!res.ok) throw new Error("Failed to fetch token");
+      const data = await res.json();
+      return data.token;
+    };
+
     const client = StreamVideoClient.getOrCreateInstance({
       apiKey: process.env.NEXT_PUBLIC_STREAM_API_KEY!,
       user: {
         id: user?.id,
-        name: user?.firstName || "" + " " + user?.lastName || "" || user?.id,
+        name: (user?.firstName || "") + " " + (user?.lastName || "") || user?.id,
         image: user?.imageUrl,
       },
-      tokenProvider: streamTokenProvider,
+      tokenProvider,
     });
 
     setStreamVideoClient(client);

@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import useMeetingActions from "@/hooks/useMeetingActions";
+import { useRouter } from "next/navigation";
 
 interface MeetingModalProps {
   isOpen: boolean;
@@ -67,12 +68,13 @@ function MeetingModal({ isOpen, onClose, title, isJoinMeeting }: MeetingModalPro
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px]" aria-describedby="meeting-modal-description">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 pt-4">
+        <div className="space-y-4 pt-4" id="meeting-modal-description">
+          <span style={{display: 'none'}}>This modal allows you to start or join a meeting. Enter a meeting link to join, or start a new meeting to get a link.</span>
           {createdMeetingLink ? (
             <>
               <Input value={createdMeetingLink} readOnly />

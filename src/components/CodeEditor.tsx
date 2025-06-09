@@ -13,7 +13,7 @@ import { Button } from "./ui/button";
 import { useAction } from "convex/react";
 // api is already imported via useMutation, no need for duplicate
 import { Loader2Icon, CheckCircle2Icon, XCircleIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast"; // Ensuring toast is imported
 import { editor } from "monaco-editor"; // Added for editor instance type
 import { useUser } from "@clerk/nextjs"; // Added for user context
 
@@ -50,6 +50,7 @@ function CodeEditor({ interview }: CodeEditorProps) {
   const updateInterviewCode = useMutation(api.interviews.updateInterviewCode);
   const updateInterviewLanguage = useMutation(api.interviews.updateInterviewLanguage);
   const updateInterviewQuestion = useMutation(api.interviews.updateInterviewQuestion); // Added
+  const submitCodeMutation = useMutation(api.interviews.submitCurrentCode);
 
   // // Debounced function to update code in Convex - REMOVED
   // const debouncedUpdateCode = useRef(
@@ -264,6 +265,23 @@ function CodeEditor({ interview }: CodeEditorProps) {
     }
   };
 
+  const handleSubmitCode = async () => {
+    if (!interview?._id) {
+      toast.error("Interview context is not available.");
+      return;
+    }
+    const toastId = toast.loading("Submitting your code...");
+    try {
+      await submitCodeMutation({ interviewId: interview._id });
+      toast.success("Code submitted successfully!", { id: toastId });
+      // The UI should update based on interview.isCodeSubmitted via Convex subscription
+    } catch (error) {
+      console.error("Failed to submit code:", error);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during submission.";
+      toast.error(`Error submitting code: ${errorMessage}`, { id: toastId });
+    }
+  };
+
   return (
     <ResizablePanelGroup direction="vertical" className="min-h-[calc-100vh-4rem-1px]">
       {/* QUESTION SECTION */}
@@ -442,10 +460,10 @@ function CodeEditor({ interview }: CodeEditorProps) {
       {/* CODE EDITOR */}
       <ResizablePanel defaultSize={60} maxSize={100}>
         <div className="h-full relative">
-          <div className="absolute top-4 right-4 z-10">
+          <div className="absolute top-4 right-4 z-10 flex gap-2">
             <Button
               onClick={handleRunCode}
-              disabled={isRunning}
+              disabled={isRunning || (interview.isCodeSubmitted && isCandidate)}
               className="gap-2"
             >
               {isRunning ? (
@@ -460,6 +478,16 @@ function CodeEditor({ interview }: CodeEditorProps) {
                 </>
               )}
             </Button>
+            {isCandidate && !interview.isCodeSubmitted && (
+              <Button
+                onClick={handleSubmitCode}
+                // disabled={isRunning} // Or any other condition if needed
+                className="gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle2Icon className="h-4 w-4" />
+                Submit Code
+              </Button>
+            )}
           </div>
           <Editor
             height={"100%"}
@@ -470,7 +498,7 @@ function CodeEditor({ interview }: CodeEditorProps) {
             onMount={(editor) => editorRef.current = editor} // Store editor instance
             onChange={handleCodeChange} // onChange will respect readOnly internally
             options={{
-              readOnly: !isCandidate, // Set readOnly option for Monaco editor
+              readOnly: !isCandidate || interview.isCodeSubmitted, // Updated readOnly logic
               minimap: { enabled: false },
               fontSize: 18,
               lineNumbers: "on",

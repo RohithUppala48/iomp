@@ -10,6 +10,7 @@ import {
 import { LayoutListIcon, LoaderIcon, UsersIcon, MessageSquareIcon, TimerIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs"; // Added
 import { useQuery } from "convex/react"; // Added
 import { api } from "../../convex/_generated/api"; // Added
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable";
@@ -33,6 +34,7 @@ function MeetingRoom() {
   const { useCallCallingState } = useCallStateHooks();
   const call = useCall();
   const callingState = useCallCallingState();
+  const { user } = useUser(); // Get current user
 
   // Fetch interview details
   const interviewId = call?.id; // streamCallId is the interviewId for the query
@@ -40,6 +42,8 @@ function MeetingRoom() {
     api.interviews.getInterviewByStreamCallId,
     interviewId ? { streamCallId: interviewId } : "skip"
   );
+
+  const isInterviewer = user?.id !== interview?.candidateId;
 
   // Timer effect
   useEffect(() => {
@@ -156,29 +160,29 @@ function MeetingRoom() {
           </div>
         </ResizablePanel>
 
-        <ResizableHandle withHandle />
-
-        <ResizablePanel defaultSize={65} minSize={25}>
-          {interview === undefined && (
-            <div className="flex items-center justify-center h-full">
-              <LoaderIcon className="size-6 animate-spin" />
-              <p className="ml-2">Loading code editor...</p>
-            </div>
-          )}
-          {interview === null && (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-red-500">Error: Could not load interview details for the code editor.</p>
-            </div>
-          )}
-          {interview && (
-            <CodeEditor
-              interview={interview}
-              // Pass initialCode and initialLanguage if they exist, otherwise CodeEditor defaults will be used
-              // initialCode={interview.currentCode || undefined}
-              // initialLanguage={interview.currentLanguage || undefined}
-            />
-          )}
-        </ResizablePanel>
+        {!(interview?.isCodeSubmitted && isInterviewer) && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={65} minSize={25}>
+              {interview === undefined && ( // Still show loader if interview data is loading
+                <div className="flex items-center justify-center h-full">
+                  <LoaderIcon className="size-6 animate-spin" />
+                  <p className="ml-2">Loading code editor...</p>
+                </div>
+              )}
+              {interview === null && ( // Still show error if interview data failed to load
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-red-500">Error: Could not load interview details for the code editor.</p>
+                </div>
+              )}
+              {interview && ( // Only render CodeEditor if interview data is available
+                <CodeEditor
+                  interview={interview}
+                />
+              )}
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
     </div>
   );

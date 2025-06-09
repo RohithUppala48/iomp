@@ -22,6 +22,9 @@ export default defineSchema({
     currentCode: v.optional(v.string()),
     currentLanguage: v.optional(v.string()),
     selectedQuestionId: v.optional(v.string()),
+    submittedCode: v.optional(v.string()),
+    submittedLanguage: v.optional(v.string()),
+    isCodeSubmitted: v.optional(v.boolean()),
   })
     .index("by_candidate_id", ["candidateId"])
     .index("by_stream_call_id", ["streamCallId"]),

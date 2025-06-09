@@ -9,10 +9,10 @@ import {
 } from "@stream-io/video-react-sdk";
 import { LayoutListIcon, LoaderIcon, UsersIcon, MessageSquareIcon, TimerIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs"; // Added
-import { useQuery } from "convex/react"; // Added
-import { api } from "../../convex/_generated/api"; // Added
+import { useState, useEffect, useCallback } from "react";
+import { useUser } from "@clerk/nextjs";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable";
 import {
   DropdownMenu,
@@ -34,40 +34,36 @@ function MeetingRoom() {
   const { useCallCallingState } = useCallStateHooks();
   const call = useCall();
   const callingState = useCallCallingState();
-  const { user } = useUser(); // Get current user
+  const { user } = useUser();
 
   // Fetch interview details
-  const interviewId = call?.id; // streamCallId is the interviewId for the query
-  console.log("[MeetingRoom] streamCallId used for interview query:", interviewId);
+  const interviewId = call?.id;
   const interview = useQuery(
     api.interviews.getInterviewByStreamCallId,
     interviewId ? { streamCallId: interviewId } : "skip"
   );
 
-  useEffect(() => {
-    if (interviewId && !interview) {
-      console.error(`[MeetingRoom] No interview found for streamCallId: ${interviewId}`);
-    }
-  }, [interviewId, interview]);
-
   const isInterviewer = user?.id !== interview?.candidateId;
 
-  // Timer effect
-  useEffect(() => {
-    if (callingState === CallingState.JOINED) {
-      const timer = setInterval(() => {
-        setElapsedTime(prev => prev + 1);
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [callingState]);
-
-  const formatTime = (seconds: number) => {
+  // Timer effect - Memoize the format function
+  const formatTime = useCallback((seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (callingState === CallingState.JOINED) {
+      timer = setInterval(() => {
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [callingState]);
 
   if (callingState !== CallingState.JOINED) {
     return (
@@ -171,21 +167,17 @@ function MeetingRoom() {
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={65} minSize={25}>
-              {interview === undefined && ( // Still show loader if interview data is loading
+              {interview === undefined ? (
                 <div className="flex items-center justify-center h-full">
                   <LoaderIcon className="size-6 animate-spin" />
                   <p className="ml-2">Loading code editor...</p>
                 </div>
-              )}
-              {interview === null && ( // Still show error if interview data failed to load
+              ) : interview === null ? (
                 <div className="flex items-center justify-center h-full">
-                  <p className="text-red-500">Error: Could not load interview details for the code editor. (streamCallId: {interviewId})</p>
+                  <p className="text-red-500">Error: Could not load interview details</p>
                 </div>
-              )}
-              {interview && ( // Only render CodeEditor if interview data is available
-                <CodeEditor
-                  interview={interview}
-                />
+              ) : (
+                <CodeEditor interview={interview} />
               )}
             </ResizablePanel>
           </>
@@ -194,4 +186,5 @@ function MeetingRoom() {
     </div>
   );
 }
+
 export default MeetingRoom;

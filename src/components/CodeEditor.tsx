@@ -264,7 +264,6 @@ function CodeEditor({ interview }: CodeEditorProps) {
       setIsRunning(false);
     }
   };
-
   const handleSubmitCode = async () => {
     if (!interview?._id) {
       toast.error("Interview context is not available.");
@@ -272,13 +271,22 @@ function CodeEditor({ interview }: CodeEditorProps) {
     }
     const toastId = toast.loading("Submitting your code...");
     try {
-      await submitCodeMutation({ 
-        interviewId: interview._id, 
-        questionId: selectedQuestion.id, 
-        code 
+      // Make sure current code and question are synced to the interview first
+      await updateInterviewCode({
+        interviewId: interview._id,
+        code: code
       });
+      await updateInterviewQuestion({
+        interviewId: interview._id,
+        questionId: selectedQuestion.id
+      });
+      
+      // Then submit the code
+      await submitCodeMutation({ 
+        interviewId: interview._id
+      });
+      
       toast.success("Code submitted successfully!", { id: toastId });
-      // The UI should update based on interview.isCodeSubmitted via Convex subscription
     } catch (error) {
       console.error("Failed to submit code:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during submission.";

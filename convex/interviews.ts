@@ -1,6 +1,6 @@
 import { mutation, query, action } from "./_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { internal, api } from "./_generated/api";
 
 export const getAllInterviews = query({
   handler: async (ctx) => {
@@ -25,7 +25,23 @@ export const updateInterviewQuestion = mutation({
     const interview = await ctx.db.get(args.interviewId);
     if (!interview) throw new Error("Interview not found");
 
-    if (identity.subject !== interview.candidateId) {
+    // Get user details to check role
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("clerkId"), identity.subject))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    // Allow access if:
+    // 1. User is the candidate for this interview
+    // 2. User is an interviewer
+    // 3. Interview has not been submitted yet
+    const isCandidate = identity.subject === interview.candidateId;
+    const isInterviewer = user.role === "interviewer";
+    const isNotSubmitted = !interview.isCodeSubmitted;
+
+    if (!isCandidate && !isInterviewer && !isNotSubmitted) {
       throw new Error("User is not authorized to make changes to this interview's question.");
     }
 
@@ -104,7 +120,24 @@ export const updateInterviewCode = mutation({
     const interview = await ctx.db.get(args.interviewId);
     if (!interview) throw new Error("Interview not found");
 
-    if (identity.subject !== interview.candidateId) {
+    // Get user details to check role
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("clerkId"), identity.subject))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    // Allow access if:
+    // 1. User is the candidate for this interview
+    // 2. User is an interviewer
+    // 3. Interview has not been submitted yet
+    const isCandidate = identity.subject === interview.candidateId;
+    const isInterviewer = user.role === "interviewer";
+    const isNotSubmitted = !interview.isCodeSubmitted;
+
+    // Allow if ANY of the conditions are true
+    if (!(isCandidate || isInterviewer || isNotSubmitted)) {
       throw new Error("User is not authorized to make changes to this interview's code.");
     }
 
@@ -126,7 +159,23 @@ export const updateInterviewLanguage = mutation({
     const interview = await ctx.db.get(args.interviewId);
     if (!interview) throw new Error("Interview not found");
 
-    if (identity.subject !== interview.candidateId) {
+    // Get user details to check role
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("clerkId"), identity.subject))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    // Allow access if:
+    // 1. User is the candidate for this interview
+    // 2. User is an interviewer
+    // 3. Interview has not been submitted yet
+    const isCandidate = identity.subject === interview.candidateId;
+    const isInterviewer = user.role === "interviewer";
+    const isNotSubmitted = !interview.isCodeSubmitted;
+
+    if (!isCandidate && !isInterviewer && !isNotSubmitted) {
       throw new Error("User is not authorized to make changes to this interview's language.");
     }
 
@@ -149,59 +198,11 @@ export const updateInterviewStatus = mutation({
   },
 });
 
-export const submitCurrentCode = mutation({
-  args: { interviewId: v.id("interviews") },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
-
-    const interview = await ctx.db.get(args.interviewId);
-    if (!interview) {
-      throw new Error("Interview not found");
-    }
-
-    // Execute the code before storing submission
-    const executionResults = await ctx.runAction(internal.codeExecution.executeCode, {
-      questionId: interview.selectedQuestionId || "",
-      language: interview.currentLanguage || "",
-      code: interview.currentCode || "",
-    });
-
-    const newSubmission = {
-      code: interview.currentCode || "",
-      language: interview.currentLanguage || "",
-      timestamp: Date.now(),
-      questionId: interview.selectedQuestionId || "",
-      executionResults,
-    };
-
-    // Get existing submissions or initialize empty array
-    const existingSubmissions = interview.submissions || [];
-
-    return await ctx.db.patch(args.interviewId, {
-      submittedCode: interview.currentCode,
-      submittedLanguage: interview.currentLanguage,
-      isCodeSubmitted: true,
-      submissions: [...existingSubmissions, newSubmission],
-    });
-  },
-});
-
 export const getAllSubmittedInterviews = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("Unauthorized: Must be logged in to view submissions.");
-    }
-
-    // Get user details to check role
-    const user = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("clerkId"), identity.subject))
-      .first();
-
-    if (!user || user.role !== "interviewer") {
-      throw new Error("Unauthorized: Only interviewers can view submissions.");
     }
 
     const interviewsQuery = ctx.db
@@ -233,5 +234,107 @@ export const getAllSubmittedInterviews = query({
     );
 
     return interviewsWithCandidateDetails;
+  },
+});
+
+// Move this export to the very end of the file to avoid circular reference
+export const submitCurrentCode = mutation({
+  args: {
+    interviewId: v.id("interviews")
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const interview = await ctx.db.get(args.interviewId);
+    if (!interview) {
+      throw new Error("Interview not found");
+    }
+
+    // Get user details to check role
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("clerkId"), identity.subject))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    // Allow access if:
+    // 1. User is the candidate for this interview
+    // 2. User is an interviewer
+    const isCandidate = identity.subject === interview.candidateId;
+    const isInterviewer = user.role === "interviewer";
+
+    // Use OR logic - either condition allows access
+    if (!(isCandidate || isInterviewer)) {
+      throw new Error("User is not authorized to submit code for this interview.");
+    }
+
+    const timestamp = Date.now();
+    
+    try {      // Execute the code first to get results
+      const executionResults = await ctx.scheduler.runAction(internal.codeExecution.executeCode, {
+        questionId: interview.selectedQuestionId || "",
+        language: interview.currentLanguage || "",
+        code: interview.currentCode || "",
+        timestamp,
+        interviewId: args.interviewId
+      });
+
+      // Create a new submission with the execution results
+      const newSubmission = {
+        code: interview.currentCode || "",
+        language: interview.currentLanguage || "",
+        timestamp,
+        questionId: interview.selectedQuestionId || "",
+        executionResults
+      };
+
+      // Get existing submissions or initialize empty array
+      const existingSubmissions = interview.submissions || [];
+
+      // Update the interview record with the new submission
+      return await ctx.db.patch(args.interviewId, {
+        submittedCode: interview.currentCode,  
+        submittedLanguage: interview.currentLanguage,
+        isCodeSubmitted: true,
+        submissions: [...existingSubmissions, newSubmission],
+      });
+    } catch (error) {
+      console.error("Failed to execute code:", error);
+      throw new Error("Failed to execute code: " + error.message);
+    }
+  },
+});
+
+// Add a new mutation to update execution results
+export const updateExecutionResults = mutation({
+  args: {
+    interviewId: v.id("interviews"),
+    timestamp: v.number(),
+    executionResults: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const interview = await ctx.db.get(args.interviewId);
+    if (!interview) {
+      throw new Error("Interview not found");
+    }
+    
+    const submissions = interview.submissions || [];
+    
+    // Find the submission with the matching timestamp
+    const updatedSubmissions = submissions.map(submission => {
+      if (submission.timestamp === args.timestamp) {
+        return {
+          ...submission,
+          executionResults: args.executionResults,
+        };
+      }
+      return submission;
+    });
+    
+    return await ctx.db.patch(args.interviewId, {
+      submissions: updatedSubmissions,
+    });
   },
 });
